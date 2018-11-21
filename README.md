@@ -1,5 +1,5 @@
 # 使用MMAP写的日志
-MMAP：![MMAP基本概念](https://www.cnblogs.com/huxiao-tee/p/4660352.html)
+MMAP：[MMAP基本概念](https://www.cnblogs.com/huxiao-tee/p/4660352.html)
 
 * 一、mmap可以直接将文件映射至内存，减少写文件时的拷贝次数，速度比普通写文件日志要快
 ```
