@@ -30,14 +30,16 @@ func MmapRead(filePath string) (content []byte, err error) {
 }
 
 type mmap struct {
-	data       []byte      // 与文件映射的内存
-	dataC      chan []byte // 用于写入的通道
-	f          *os.File    // 日志文件
-	FilePath   string      // 文件路径
-	at         int         // 在什么位置写
-	size       int         // 与文件映射的大小
-	extendType int         // 当映射的内存不够用时的扩容策略，1: 在原文件中继续追加，2：新建文件
-	isM        bool        // 如果使用mmap出错，则改用直接写文件的方式
+	data       []byte        // 与文件映射的内存
+	dataC      chan []byte   // 用于写入的通道
+	stopC      chan struct{} // 停止写入
+	stop       bool
+	f          *os.File // 日志文件
+	FilePath   string   // 文件路径
+	at         int      // 在什么位置写
+	size       int      // 与文件映射的大小
+	extendType int      // 当映射的内存不够用时的扩容策略，1: 在原文件中继续追加，2：新建文件
+	isM        bool     // 如果使用mmap出错，则改用直接写文件的方式
 }
 
 func NewMmap(filePath string, size int, extendType int) (*mmap, error) {
@@ -54,16 +56,27 @@ func NewMmap(filePath string, size int, extendType int) (*mmap, error) {
 		size:       size,
 		FilePath:   filePath,
 		extendType: extendType,
-		dataC:      make(chan []byte, 10),
+		dataC:      make(chan []byte, 100),
+		stopC:      make(chan struct{}, 1),
+		stop:       false,
 		isM:        true,
 	}
 
 	// 使用channel方式，同步写入
 	go m.wait()
-	//return m, m.init(filePath)
-	return nil,fmt.Errorf("")
+	//go m.rename()
+	return m, m.init(filePath)
 }
 
+// 修改日志文件名称，用于分割日志使用，防止一个文件过大
+func (m *mmap) rename() {
+	m.unmap()
+	os.Rename(m.FilePath, fmt.Sprintf("%s.%+v", m.FilePath, time.Now().Format("20060102150405")))
+	m.size = 1 << 20
+	m.allocate()
+}
+
+// 初始化log信息
 func (m *mmap) init(filePath string) error {
 	os.Rename(filePath, fmt.Sprintf("%s.%+v", filePath, time.Now().Format("20060102150405")))
 	err := m.setFileInfo(filePath)
@@ -78,6 +91,7 @@ func (m *mmap) init(filePath string) error {
 	return nil
 }
 
+// MMAP映射
 func (m *mmap) allocate() error {
 	if m.f == nil {
 		m.setFileInfo(m.FilePath)
@@ -93,7 +107,7 @@ func (m *mmap) allocate() error {
 	}
 
 	// 映射
-	data, err := syscall.Mmap(int(m.f.Fd()), 0, int(m.size), syscall.PROT_WRITE|syscall.PROT_READ, syscall.MAP_SHARED)
+	data, err := syscall.Mmap(int(m.f.Fd()), int64(m.at), int(m.size), syscall.PROT_WRITE|syscall.PROT_READ, syscall.MAP_SHARED)
 	if nil != err {
 		return err
 	}
@@ -101,6 +115,7 @@ func (m *mmap) allocate() error {
 	return nil
 }
 
+// 设置映射的文件
 func (m *mmap) setFileInfo(filePath string) error {
 	// 打开文件
 	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
@@ -119,8 +134,14 @@ func (m *mmap) setFileInfo(filePath string) error {
 	return nil
 }
 
-// 关闭文件映射
+// 关闭所有
 func (m *mmap) Close() error {
+	m.stopC <- struct{}{}
+	return m.unmap()
+}
+
+// 关闭文件映射
+func (m *mmap) unmap() error {
 	// 关闭映射
 	if err := syscall.Munmap(m.data); nil != err {
 		return err
@@ -137,19 +158,23 @@ func (m *mmap) Close() error {
 
 // 接收写入内容
 func (m *mmap) Write(content []byte) error {
-	m.dataC <- content
+	if !m.stop {
+		m.dataC <- content
+	}
 	return nil
 }
 
-// 当初始映射大小不足时，以双倍方式扩容
-func (m *mmap) doubleMmap() error {
+// 当初始映射大小不足时，进行扩容
+func (m *mmap) doubleAllocate() error {
 	// 先将之前的映射关闭
-	m.Close()
+	m.unmap()
 	m.size = 2 * m.size
 	return m.allocate()
 }
 
+// 等待内容写入
 func (m *mmap) wait() {
+	t := time.NewTimer(time.Duration(getTimeer()))
 	for {
 		select {
 		case content := <-m.dataC:
@@ -158,12 +183,20 @@ func (m *mmap) wait() {
 			}
 			// 剩余空间不足以添加所有内容，需要扩容
 			for len(content) > m.size-m.at {
-				err := m.doubleMmap()
+				err := m.doubleAllocate()
 				if err != nil {
 					m.isM = false
 				}
 			}
 			m.write(content)
+
+		case <-t.C:
+			m.rename()
+			t.Reset(time.Second * 60 * 60 * 24)
+
+		case <-m.stopC:
+			m.stop = true
+			close(m.dataC)
 		}
 	}
 }
@@ -198,4 +231,10 @@ func (m *mmap) writeWithIO(content []byte) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func getTimeer() int64 {
+	now := time.Now()
+	dest := time.Date(now.Year(), now.Month(), now.Day()+1, 1, 0, 0, 0, time.Local)
+	return dest.UnixNano() - now.UnixNano()
 }

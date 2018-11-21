@@ -19,21 +19,14 @@ type Logger struct {
 	fatalLabel string
 	debugLabel string
 	traceLabel string
-	pid        string
 }
 
 // NewStdLogger creates a logger with output directed to Stderr
-func NewStdLogger(path string, debug, trace, colors, pid bool) *Logger {
-	pre := ""
-	if pid {
-		pre = pidPrefix()
-	}
-
+func NewStdLogger(path string, debug, trace, colors bool) *Logger {
 	l := &Logger{
-		logger:writer.NewWriter(path, 1 << 20, 0),
-		debug: debug,
-		trace: trace,
-		pid:   pre,
+		logger: writer.NewWriter(path, 1<<20, 0),
+		debug:  debug,
+		trace:  trace,
 	}
 
 	if colors {
@@ -45,9 +38,8 @@ func NewStdLogger(path string, debug, trace, colors, pid bool) *Logger {
 	return l
 }
 
-// Generate the pid prefix string
-func pidPrefix() string {
-	return fmt.Sprintf("[%d] ", os.Getpid())
+func (l *Logger) Close() {
+	l.logger.Close()
 }
 
 func setPlainLabelFormats(l *Logger) {
@@ -70,33 +62,62 @@ func setColoredLabelFormats(l *Logger) {
 // Debug logs a debug statement
 func (l *Logger) Debug(format string, v ...interface{}) {
 	if l.debug {
-		l.logger.Write([]byte(fmt.Sprintf("%s %s %s", l.pid, l.debugLabel, fmt.Sprintf(format, v...))))
-		l.logger.Write([]byte(fmt.Sprintln()))
+		l.logger.Write([]byte(l.getContent(nil, format, l.debugLabel, v...)))
+	}
+}
+
+func (l *Logger) DebugWithField(head map[string]interface{}, format string, v ...interface{}) {
+	if l.debug {
+		l.logger.Write([]byte(l.getContent(head, format, l.debugLabel, v...)))
 	}
 }
 
 // Trace logs a trace statement
 func (l *Logger) Trace(format string, v ...interface{}) {
 	if l.trace {
-		l.logger.Write([]byte(fmt.Sprintf("%s %s %s", l.pid, l.traceLabel, fmt.Sprintf(format, v...))))
-		l.logger.Write([]byte(fmt.Sprintln()))
+		l.logger.Write([]byte(l.getContent(nil, format, l.traceLabel, v...)))
+	}
+}
+
+func (l *Logger) TraceWithField(head map[string]interface{}, format string, v ...interface{}) {
+	if l.trace {
+		l.logger.Write([]byte(l.getContent(head, format, l.traceLabel, v...)))
 	}
 }
 
 // Warning logs a notice statement
 func (l *Logger) Warning(format string, v ...interface{}) {
-	l.logger.Write([]byte(fmt.Sprintf("%s %s %s", l.pid, l.warnLabel, fmt.Sprintf(format, v...))))
-	l.logger.Write([]byte(fmt.Sprintln()))
+	l.logger.Write([]byte(l.getContent(nil, format, l.warnLabel, v...)))
+}
+
+// Warning logs a notice statement
+func (l *Logger) WarningWithField(head map[string]interface{}, format string, v ...interface{}) {
+	l.logger.Write([]byte(l.getContent(head, format, l.warnLabel, v...)))
 }
 
 // Error logs an error statement
 func (l *Logger) Error(format string, v ...interface{}) {
-	l.logger.Write([]byte(fmt.Sprintf("%s %s %s", l.pid, l.errorLabel, fmt.Sprintf(format, v...))))
-	l.logger.Write([]byte(fmt.Sprintln()))
+	l.logger.Write([]byte(l.getContent(nil, format, l.errorLabel, v...)))
+}
+
+func (l *Logger) ErrorWithField(head map[string]interface{}, format string, v ...interface{}) {
+	l.logger.Write([]byte(l.getContent(head, format, l.errorLabel, v...)))
 }
 
 // Fatal logs a fatal error
 func (l *Logger) Fatal(format string, v ...interface{}) {
-	l.logger.Write([]byte(fmt.Sprintf("%s %s %s", l.pid, l.fatalLabel, fmt.Sprintf(format, v...))))
-	l.logger.Write([]byte(fmt.Sprintln()))
+	l.logger.Write([]byte(l.getContent(nil, format, l.fatalLabel, v...)))
+	os.Exit(1)
+}
+
+func (l *Logger) FatalWithField(head map[string]interface{}, format string, v ...interface{}) {
+	l.logger.Write([]byte(l.getContent(head, format, l.fatalLabel, v...)))
+	os.Exit(1)
+}
+
+func (l *Logger) getContent(head map[string]interface{}, format, label string, v ...interface{}) string {
+	if len(head) > 0 {
+		return fmt.Sprintf("%s %+v %s%s", label, head, fmt.Sprintf(format, v...), fmt.Sprintln())
+	}
+	return fmt.Sprintf("%s %s%s", label, fmt.Sprintf(format, v...), fmt.Sprintln())
 }
