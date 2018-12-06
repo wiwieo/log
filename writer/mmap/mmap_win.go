@@ -4,7 +4,6 @@ package mmap
 
 import (
 	"fmt"
-	"os"
 )
 
 //func MmapRead(filePath string) (content []byte, err error) {
@@ -75,41 +74,16 @@ import (
 //	return nil
 //}
 type mmap struct {
-	FilePath string
-	f        *os.File
 }
 
-func NewMmap(filePath string, size int, extendType int) (*mmap, error) {
-	f, err := os.Open(filePath)
-	if err != nil {
-		return nil, err
-	}
-	return &mmap{
-		FilePath: filePath,
-		f:        f,
-	}, nil
+func NewMmap(filePath string, size int) (*mmap, error) {
+	return nil, fmt.Errorf("not support windows system")
 }
 
 func (n *mmap) Write(content []byte) error {
-	if n.f == nil {
-		return fmt.Errorf("file is not opened")
-	}
-
-	fi, err := n.f.Stat()
-	if nil != err {
-		return err
-	}
-
-	if _, err := n.f.WriteAt(content, fi.Size()); nil != err {
-		return err
-	}
-
-	return nil
+	return fmt.Errorf("not support windows system")
 }
 
 func (n *mmap) Close() error {
-	if n.f != nil {
-		return n.f.Close()
-	}
-	return nil
+	return fmt.Errorf("not support windows system")
 }

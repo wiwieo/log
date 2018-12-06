@@ -7,6 +7,7 @@ import (
 	"os"
 	"syscall"
 	"time"
+	"uuabc.com/gateway/pkg/log/writer/common"
 )
 
 func MmapRead(filePath string) (content []byte, err error) {
@@ -30,19 +31,18 @@ func MmapRead(filePath string) (content []byte, err error) {
 }
 
 type mmap struct {
-	data       []byte        // 与文件映射的内存
-	dataC      chan []byte   // 用于写入的通道
-	stopC      chan struct{} // 停止写入
-	stop       bool
-	f          *os.File // 日志文件
-	FilePath   string   // 文件路径
-	at         int      // 在什么位置写
-	size       int      // 与文件映射的大小
-	extendType int      // 当映射的内存不够用时的扩容策略，1: 在原文件中继续追加，2：新建文件
-	isM        bool     // 如果使用mmap出错，则改用直接写文件的方式
+	data     []byte        // 与文件映射的内存
+	dataC    chan []byte   // 用于写入的通道
+	stopC    chan struct{} // 停止写入
+	stop     bool
+	f        *os.File // 日志文件
+	FilePath string   // 文件路径
+	at       int      // 在什么位置写
+	size     int      // 与文件映射的大小
+	isM      bool     // 如果使用mmap出错，则改用直接写文件的方式
 }
 
-func NewMmap(filePath string, size int, extendType int) (*mmap, error) {
+func NewMmap(filePath string, size int) (*mmap, error) {
 	// 文件映射的大小必须是页数的倍数，如果不是，则自动根据大小调整为相应倍数
 	if size%syscall.Getpagesize() != 0 {
 		size = (size / syscall.Getpagesize()) * syscall.Getpagesize()
@@ -53,13 +53,12 @@ func NewMmap(filePath string, size int, extendType int) (*mmap, error) {
 
 	// 构建对应的结构体，以配后续使用
 	m := &mmap{
-		size:       size,
-		FilePath:   filePath,
-		extendType: extendType,
-		dataC:      make(chan []byte, 100),
-		stopC:      make(chan struct{}, 1),
-		stop:       false,
-		isM:        true,
+		size:     size,
+		FilePath: filePath,
+		dataC:    make(chan []byte, common.CACHE_COUNT),
+		stopC:    make(chan struct{}, 1),
+		stop:     false,
+		isM:      true,
 	}
 
 	// 使用channel方式，同步写入
@@ -137,7 +136,9 @@ func (m *mmap) setFileInfo(filePath string) error {
 // 关闭所有
 func (m *mmap) Close() error {
 	m.stopC <- struct{}{}
-	return m.unmap()
+	// 需要时间去处理后续操作，包括未写入的数据
+	time.Sleep(100 * time.Millisecond)
+	return nil
 }
 
 // 关闭文件映射
@@ -174,10 +175,15 @@ func (m *mmap) doubleAllocate() error {
 
 // 等待内容写入
 func (m *mmap) wait() {
-	t := time.NewTimer(time.Duration(getTimeer()))
+	t := time.NewTimer(time.Duration(common.GetTimeer(time.Now())))
 	for {
 		select {
-		case content := <-m.dataC:
+		case content, ok := <-m.dataC:
+			// 通道被关闭且服务停止，则关闭映射
+			if !ok && m.stop {
+				m.unmap()
+				return
+			}
 			if len(content) == 0 {
 				return
 			}
@@ -186,16 +192,18 @@ func (m *mmap) wait() {
 				err := m.doubleAllocate()
 				if err != nil {
 					m.isM = false
+					m.unmap()
 				}
 			}
 			m.write(content)
-
 		case <-t.C:
 			m.rename()
-			t.Reset(time.Second * 60 * 60 * 24)
+			t.Reset(time.Duration(common.GetTimeer(time.Now())))
 
 		case <-m.stopC:
+			// 停止往channel里继续写数据
 			m.stop = true
+			// 关闭channel
 			close(m.dataC)
 		}
 	}
@@ -231,10 +239,4 @@ func (m *mmap) writeWithIO(content []byte) {
 	if err != nil {
 		panic(err)
 	}
-}
-
-func getTimeer() int64 {
-	now := time.Now()
-	dest := time.Date(now.Year(), now.Month(), now.Day()+1, 1, 0, 0, 0, time.Local)
-	return dest.UnixNano() - now.UnixNano()
 }

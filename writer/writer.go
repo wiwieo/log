@@ -1,23 +1,40 @@
 package writer
 
 import (
-	"log/writer/mmap"
-	"log/writer/normal"
+	"fmt"
+	"uuabc.com/gateway/pkg/log/writer/common"
+	"uuabc.com/gateway/pkg/log/writer/mmap"
+	"uuabc.com/gateway/pkg/log/writer/stdout"
 )
 
+// 如果有需要实现新的日志写入方式，则直接实现这个接口，并在创建实例时，返回对应的实例即可
 type Writer interface {
 	Write(content []byte) error
 	Close() error
 }
 
-func NewWriter(filePath string, size int, extendType int) Writer {
-	m, err := mmap.NewMmap(filePath, size, extendType)
-	if err != nil {
-		n, err := normal.New(filePath)
+// 创建日志写入实例
+func NewWriter(filePath string, size int) Writer {
+	// 有指定日志文件，则使用mmap
+	if len(filePath) > 1 {
+		common.Mkdir(filePath)
+		m, errM := mmap.NewMmap(filePath, size)
+		// mmap映射失败，则使用终端
+		if errM != nil {
+			s, err := stdout.New()
+			if err != nil {
+				panic(err)
+			}
+			s.Write([]byte(fmt.Sprintf("mmap映射失败，使用终端日志。%s%s", errM, fmt.Sprintln())))
+			return s
+		}
+		return m
+	} else { // 路径不存在，则使用终端输出日志
+		s, err := stdout.New()
 		if err != nil {
 			panic(err)
 		}
-		return n
+		s.Write([]byte(fmt.Sprintf("mmap映射文件路径不存在，使用终端日志。")))
+		return s
 	}
-	return m
 }

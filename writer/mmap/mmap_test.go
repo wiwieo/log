@@ -11,7 +11,7 @@ import (
 const path = `/mnt/d/project/go/src/log/file/log.log`
 
 func TestMmapWrite(t *testing.T) {
-	m, err := NewMmap(path, 1<<14, 1)
+	m, err := NewMmap(path, 1<<14)
 	if err != nil {
 		panic(fmt.Sprintf("memory mapping to file error. %s", err))
 	}
@@ -26,7 +26,7 @@ func TestMmapWrite(t *testing.T) {
 }
 
 func BenchmarkMmapWrite(b *testing.B) {
-	m, err := NewMmap(path, 1<<14, 1)
+	m, err := NewMmap(path, 1<<14)
 	if err != nil {
 		panic(fmt.Sprintf("memory mapping to file error. %s", err))
 	}
