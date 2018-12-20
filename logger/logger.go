@@ -5,9 +5,9 @@ package logger
 
 import (
 	"fmt"
+	"log/writer"
 	"os"
 	"time"
-	"uuabc.com/gateway/pkg/log/writer"
 )
 
 // Logger is the server logger
@@ -38,6 +38,8 @@ func NewStdLogger(debug, trace, warn, err, colors bool) *Logger {
 	} else {
 		setPlainLabelFormats(l)
 	}
+
+	l.SetPath("")
 	return l
 }
 

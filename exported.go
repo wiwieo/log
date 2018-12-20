@@ -1,8 +1,8 @@
 package log
 
 import (
+	"log/logger"
 	"strings"
-	"uuabc.com/gateway/pkg/log/logger"
 )
 // 全局，为了避免在上下文中传递对象
 var (

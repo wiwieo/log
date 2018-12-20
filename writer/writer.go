@@ -2,9 +2,9 @@ package writer
 
 import (
 	"fmt"
-	"uuabc.com/gateway/pkg/log/writer/common"
-	"uuabc.com/gateway/pkg/log/writer/mmap"
-	"uuabc.com/gateway/pkg/log/writer/stdout"
+	"log/writer/common"
+	"log/writer/mmap"
+	"log/writer/stdout"
 )
 
 // 如果有需要实现新的日志写入方式，则直接实现这个接口，并在创建实例时，返回对应的实例即可

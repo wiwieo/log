@@ -1,4 +1,4 @@
-package main
+package log
 
 import (
 	"flag"
@@ -25,7 +25,7 @@ type server struct {
 }
 
 func main() {
-	l := logger.NewStdLogger(*logPath, true, true, true)
+	l := logger.NewStdLogger(false, true, true, true, true)
 	s := &server{
 		logger: l,
 	}

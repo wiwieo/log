@@ -4,10 +4,10 @@ package mmap
 
 import (
 	"fmt"
+	"log/writer/common"
 	"os"
 	"syscall"
 	"time"
-	"uuabc.com/gateway/pkg/log/writer/common"
 )
 
 func MmapRead(filePath string) (content []byte, err error) {
